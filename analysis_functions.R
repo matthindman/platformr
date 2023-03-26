@@ -67,3 +67,46 @@ estimate_power_law_parameters <- function(ranked_data) {
   
   return(power_law_params)
 }
+
+#' Analyze activity changes between time steps for each rank
+#'
+#' This function calculates the change in activity for each rank position between
+#' consecutive time steps.
+#'
+#' @param ranked_data A data frame with columns channel, date, activity, and rank
+#' @return A data frame with the mean change in activity for each rank position and
+#'         the Shapiro-Wilk test results
+#' @export
+analyze_rank_changes <- function(ranked_data) {
+  # Check if the required columns are present in the input data
+  if (!all(c("channel", "date", "activity", "rank") %in% colnames(ranked_data))) {
+    stop("The input data must have columns 'channel', 'date', 'activity', and 'rank'.")
+  }
+  
+  # Compute the activity differences between consecutive time steps for each rank
+  ranked_data <- ranked_data %>%
+    dplyr::arrange(date, rank) %>%
+    dplyr::group_by(rank) %>%
+    dplyr::mutate(activity_change = dplyr::lead(activity) - activity) %>%
+    dplyr::ungroup()
+  
+  # Calculate the mean activity change for each rank position
+  mean_activity_changes <- ranked_data %>%
+    dplyr::group_by(rank) %>%
+    dplyr::summarize(mean_activity_change = mean(activity_change, na.rm = TRUE))
+  
+  # Compute the logarithm of the activity changes (ignoring NAs)
+  log_activity_changes <- log(ranked_data$activity_change[!is.na(ranked_data$activity_change)])
+  
+  # Perform the Shapiro-Wilk test for lognormal distribution
+  shapiro_test_result <- shapiro.test(log_activity_changes)
+  
+  # Combine the mean activity changes and Shapiro-Wilk test result into a single data frame
+  result <- list(
+    mean_activity_changes = mean_activity_changes,
+    shapiro_test_result = shapiro_test_result
+  )
+  
+  return(result)
+}
+
