@@ -15,6 +15,8 @@ if (!requireNamespace("devtools", quietly = TRUE)) {
 # Install platformr from GitHub
 devtools::install_github("matthindman/platformr")
 
+```
+
 # Usage
 
 Import your data with import_platform_data().
