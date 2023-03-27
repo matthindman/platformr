@@ -22,8 +22,8 @@ rank_channels_by_activity <- function(data) {
 
 #' Estimate power law parameters for each time step
 #'
-#' This function fits a power law to the data at each time step using the methods from
-#' Voitalov et al. (2018) and returns a data frame with the estimated power law parameters for each date.
+#' This function fits a power law to the data at each time step 
+#' and returns a data frame with the estimated power law parameters for each date.
 #'
 #' @param ranked_data A data frame with columns channel, date, activity, and rank
 #' @return A data frame with columns date, power_law_exponent, and power_law_intercept
@@ -109,4 +109,180 @@ analyze_rank_changes <- function(ranked_data) {
   
   return(result)
 }
+
+#' Voitalov power-law fit
+#'
+#' This function fits a power-law distribution to the data using the Voitalov method.
+#' Note: you need to install the reticulate package in R.  
+#' You also need to install the 'powerlaw' package in your python environment ("pip install powerlaw")
+#'
+#' @param data A numeric vector of the data to fit the power-law distribution
+#' @return A list with the estimated parameters and goodness of fit
+#' @export
+voitalov_power_law_fit <- function(data) {
+  # Load the reticulate package
+  library(reticulate)
+  
+  # Import the required Python modules
+  powerlaw <- import("powerlaw")
+  
+  # Fit the power-law distribution to the data
+  fit <- powerlaw$Fit(data, discrete = TRUE)
+  
+  # Extract the estimated parameters and goodness of fit
+  alpha <- fit$alpha
+  xmin <- fit$xmin
+  ks_distance <- fit$D
+  ks_p_value <- fit$p
+  
+  # Return the estimated parameters and goodness of fit
+  result <- list(
+    alpha = alpha,
+    xmin = xmin,
+    ks_distance = ks_distance,
+    ks_p_value = ks_p_value
+  )
+  
+  return(result)
+}
+
+#' Fit lognormal distribution
+#'
+#' This function fits a lognormal distribution to the given data.
+#'
+#' @param data A numeric vector of the data to fit the lognormal distribution
+#' @return A list with the estimated parameters (meanlog and sdlog) and the fitting result
+#' @export
+fit_lognormal_distribution <- function(data) {
+  # Load the MASS package
+  library(MASS)
+  
+  # Fit the lognormal distribution to the data
+  fit <- fitdistr(data, "lognormal")
+  
+  # Extract the estimated parameters (meanlog and sdlog)
+  meanlog <- fit$estimate["meanlog"]
+  sdlog <- fit$estimate["sdlog"]
+  
+  # Return the estimated parameters and the fitting result
+  result <- list(
+    meanlog = meanlog,
+    sdlog = sdlog,
+    fit = fit
+  )
+  
+  return(result)
+}
+#' Fit generalized Pareto distribution
+#'
+#' This function fits a generalized Pareto distribution to the given data.
+#'
+#' @param data A numeric vector of the data to fit the generalized Pareto distribution
+#' @param threshold A numeric value specifying the threshold for the generalized Pareto distribution
+#' @return A list with the estimated parameters (location, scale, and shape) and the fitting result
+#' @export
+fit_generalized_pareto_distribution <- function(data, threshold) {
+  # Load the evd package
+  library(evd)
+  
+  # Fit the generalized Pareto distribution to the data
+  fit <- gpd(data, threshold)
+  
+  # Extract the estimated parameters (location, scale, and shape)
+  location <- fit$par.ests["location"]
+  scale <- fit$par.ests["scale"]
+  shape <- fit$par.ests["shape"]
+  
+  # Return the estimated parameters and the fitting result
+  result <- list(
+    location = location,
+    scale = scale,
+    shape = shape,
+    fit = fit
+  )
+  
+  return(result)
+}
+#' Extrapolate unobserved activity
+#'
+#' This function estimates the activity in unobserved channels by integrating the
+#' fitted distribution beyond the observed data's tail.
+#'
+#' @param fit_result A list containing the fitted distribution parameters
+#' @param observed_activity A vector of observed channel activity values
+#' @return The estimated unobserved activity
+extrapolate_unobserved_activity <- function(fit_result, observed_activity) {
+  library(pracma)
+  
+  # Define a function to calculate the probability density based on the distribution type
+  pdf <- function(x) {
+    if (fit_result$distribution_type == "taildepfun") {
+      return(dtaildepfun(x, fit_result$params$alpha, fit_result$params$beta))
+    } else if (fit_result$distribution_type == "voitalov_power_law") {
+      return(dpower_law(x, fit_result$params$alpha, fit_result$params$beta))
+    } else if (fit_result$distribution_type == "lognormal") {
+      return(dlnorm(x, fit_result$params$meanlog, fit_result$params$sdlog))
+    } else if (fit_result$distribution_type == "generalized_pareto") {
+      return(dgpd(x, fit_result$params$shape, fit_result$params$scale, fit_result$params$threshold))
+    } else {
+      stop("Invalid distribution type.")
+    }
+  }
+  
+  # Find the maximum observed activity
+  max_activity <- max(observed_activity)
+  
+  # Integrate the probability density function beyond the observed data's tail
+  unobserved_activity <- integral(function(x) x * pdf(x), max_activity, Inf)
+  
+  return(unobserved_activity)
+}
+#' Estimate total platform activity
+#'
+#' This function estimates the total amount of activity on the platform at a given time step
+#' by fitting a specified distribution to the observed top channels and extrapolating the
+#' unobserved activity.
+#'
+#' @param observed_data A data frame containing channel activity for the top channels
+#' @param distribution_type A character string specifying the distribution type to fit and
+#'        extrapolate (default: "taildepfun", alternatives: "voitalov_power_law", "lognormal", "generalized_pareto")
+#' @return A list with the estimated total amount of activity, observed total in the list of top channels,
+#'         and the estimated unobserved activity
+#' @export
+estimate_total_platform_activity <- function(observed_data, distribution_type = "taildepfun") {
+  # Load required libraries
+  library(reticulate)
+  
+  # Fit the specified distribution to the observed data
+  if (distribution_type == "taildepfun") {
+    fit_result <- fit_taildepfun(observed_data$activity)
+  } else if (distribution_type == "voitalov_power_law") {
+    fit_result <- voitalov_power_law_fit(observed_data$activity)
+  } else if (distribution_type == "lognormal") {
+    fit_result <- fit_lognormal_distribution(observed_data$activity)
+  } else if (distribution_type == "generalized_pareto") {
+    fit_result <- fit_generalized_pareto_distribution(observed_data$activity, threshold = 0)
+  } else {
+    stop("Invalid distribution type. Choose from 'taildepfun', 'voitalov_power_law', 'lognormal', or 'generalized_pareto'.")
+  }
+  
+  # Calculate the observed total activity in the top channels
+  observed_total <- sum(observed_data$activity)
+  
+  # Estimate the activity in unobserved channels
+  unobserved_total <- extrapolate_unobserved_activity(fit_result, observed_data$activity)
+  
+  # Estimate the total amount of activity on the platform
+  estimated_total <- observed_total + unobserved_total
+  
+  # Return the results
+  result <- list(
+    estimated_total_activity = estimated_total,
+    observed_total_activity = observed_total,
+    estimated_unobserved_activity = unobserved_total
+  )
+  
+  return(result)
+}
+
 
