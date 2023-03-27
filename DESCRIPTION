@@ -1,0 +1,19 @@
+Package: platformr
+Title: Platformr - Platform Data Collection Manager
+Version: 0.1.0
+Authors@R: 
+    person("Matt", "Hindman", email = "hindman at Google's email service", role = c("aut", "cre"))
+Description: Efficient large-scale collection of public data on digital platforms
+License: TBd
+Encoding: UTF-8
+LazyData: true
+Imports: 
+    dplyr,
+    ggplot2,
+    readr,
+    lubridate,
+    reticulate,
+    taildepfun,
+    evd,
+    fitdistrplus
+RoxygenNote: 7.1.2
